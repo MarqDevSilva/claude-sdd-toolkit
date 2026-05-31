@@ -82,6 +82,28 @@ Você descreve o sistema e lista as áreas/módulos. O skill conduz perguntas es
 /spec-review SPEC-001      # revisa antes de aprovar
 ```
 
+## Instalar skills de outros repos públicos
+
+Quer importar uma skill de outro projeto público (ex.: um repo de skills da comunidade) **sem clonar o projeto inteiro**? Use o [`install-skill.sh`](install-skill.sh) — ele baixa **só aquela pasta** (via `npx degit`) direto pra `.claude/skills/`.
+
+```bash
+# Cole a URL da pasta no GitHub (formato /tree/branch/...)
+./install-skill.sh https://github.com/Jeffallan/claude-skills/tree/main/skills/spring-boot-engineer
+```
+
+**Opções:**
+
+```bash
+./install-skill.sh <url> caminho/destino     # instala em outra pasta (padrão: .claude/skills)
+./install-skill.sh <url> --force             # sobrescreve se já existir
+./install-skill.sh owner/repo/path/skill#main  # atalho estilo degit
+./install-skill.sh --help                    # ajuda
+```
+
+O script faz parse da URL, baixa apenas a subpasta, valida se tem `SKILL.md` e lista o conteúdo instalado.
+
+> **Requisito:** Node.js (`npx`). É a única dependência extra.
+
 ## Fluxo SDD resumido
 
 ```
