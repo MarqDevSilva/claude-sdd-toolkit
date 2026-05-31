@@ -36,6 +36,7 @@ Use esta skill quando o usuário pedir pra **criar uma nova spec**, **abrir uma 
 - **Uma seção por vez.** Nada de despejar a spec inteira pra preencher de uma vez.
 - Sugerir reformulações quando o usuário escrever critério ambíguo: "rápido" → "p95 < 300ms", "fácil" → critério observável.
 - Cada cenário em Dado/Quando/Então, referenciando uma persona concreta (não "o usuário" genérico).
+- Se existir `.spec/memory/` (gerado por `/project-onboard`), consulte `architecture.md`/`conventions.md` pra usar a terminologia, os módulos e os limites já existentes ao descrever escopo e cenários.
 - NFRs: incluir **apenas os relevantes** à feature, cada um com alvo mensurável e como medir. Não copiar catálogo inteiro.
 - Não criar `plan.md` nem `tasks.md` — isso é trabalho do `/spec-plan` e `/spec-tasks`.
 

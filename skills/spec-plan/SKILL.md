@@ -16,7 +16,7 @@ Se não existir spec, **redirecionar** pro `/spec-new` — não inventar plano s
 ## O que faz
 
 1. Pergunta qual SPEC (ou detecta se só houver uma em rascunho ativo).
-2. Lê `.spec/changes/SPEC-<NNN>-*/spec.md`.
+2. Lê `.spec/changes/SPEC-<NNN>-*/spec.md`. **Se existir** `.spec/memory/architecture.md` e/ou `.spec/memory/conventions.md` (gerados por `/project-onboard`), lê também — o plano deve **seguir a arquitetura e convenções existentes**, não inventar um padrão novo.
 3. Cria `plan.md` na mesma pasta da spec, usando [references/plan.template.md](references/plan.template.md).
 4. Preenche guiando o usuário pelas seções:
    - Visão geral da abordagem (estratégia + por quê)
@@ -42,6 +42,7 @@ Se não existir spec, **redirecionar** pro `/spec-new` — não inventar plano s
 - Se toca contrato API: **exigir** entrada de OpenAPI atualizada e cliente TS regerado nas tasks.
 - Se introduz nova lib/dependência: **sugerir** registrar a decisão em ADR.
 - Se p95 importa: **exigir** alvo numérico em NFR.
+- Se há `.spec/memory/architecture.md`: os componentes afetados devem **encaixar nos módulos/camadas existentes**; qualquer divergência do padrão atual precisa de justificativa explícita.
 
 ## Saída final
 

@@ -10,7 +10,7 @@ Use quando o usuário pedir pra **revisar uma spec**, **dar uma segunda opinião
 ## O que faz
 
 1. Pergunta qual SPEC revisar (ou aceita ID via argumento).
-2. Lê `spec.md` e `plan.md` (se existir) da pasta da SPEC.
+2. Lê `spec.md` e `plan.md` (se existir) da pasta da SPEC. **Se existir** `.spec/memory/architecture.md`/`conventions.md` (gerados por `/project-onboard`), lê também pra checar consistência com o que já existe.
 3. Roda checklist de revisão:
 
 ### Checklist de completude (spec)
@@ -37,7 +37,8 @@ Use quando o usuário pedir pra **revisar uma spec**, **dar uma segunda opinião
 
 ### Checklist de consistência
 
-- [ ] Não contradiz princípios/convenções do projeto (constitution, conventions — se o projeto os mantiver)
+- [ ] Se há `.spec/memory/`: o plano **segue** `architecture.md` (módulos/camadas) e `conventions.md`; divergências estão justificadas
+- [ ] Não contradiz princípios/convenções do projeto
 - [ ] Decisões arquiteturais geraram ADR (ou justificativa de não ter)
 
 > Para revisar o **PR de implementação** (não a spec), use a [checklist de code review](references/review-checklist.md).
