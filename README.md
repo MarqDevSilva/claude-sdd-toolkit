@@ -151,6 +151,15 @@ O script faz parse da URL, baixa apenas a subpasta, valida se tem `SKILL.md` e l
 | `spring-boot-engineer` | Apps Spring Boot 3.x monolito por bounded context: REST em camadas, Spring Security 6, Spring Data JPA, error handling, observabilidade |
 | `api-contract-sync` | Sincroniza o contrato API entre Spring (springdoc OpenAPI) e Angular (client TS), detectando divergências back ↔ front |
 
+### Mobile / KMP
+
+| Skill | Função |
+|-------|--------|
+| `kmp-architect` | **Hub + roteador** de um projeto Kotlin Multiplatform (KMP + Koin + Ktor + SQLDelight + StateFlow / Compose / SwiftUI). Define arquitetura (MVVM + Clean por feature em `:shared`), nomes, pastas, erros, DI e testes — e roteia cada tarefa para a skill de expert certa |
+| _experts KMP/Android/iOS_ | `kotlin-multiplatform`, `kotlin-expert`, `kotlin-coroutines`, `gradle-expert`, `compose-expert`, `android-expert`, `swiftui-patterns`, `swiftui-navigation`, `swiftui-layout-components`, `swiftui-animation`, `swiftui-gestures`, `swiftui-liquid-glass` — invocados **através** do `kmp-architect` |
+
+> O `kmp-architect` é o ponto de entrada: consulte-o antes de gerar código KMP/Compose/SwiftUI. Ele aplica as convenções do projeto e delega os detalhes idiomáticos para os experts (que foram escritos para o projeto _Amethyst_ — o `kmp-architect` documenta o override da stack canônica).
+
 ## Atualizando o template
 
 Quando você descobrir algo que vale pra todos os projetos:

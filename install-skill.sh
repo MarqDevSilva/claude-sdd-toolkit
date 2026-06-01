@@ -8,10 +8,10 @@
 #
 # Exemplos:
 #   ./install-skill.sh https://github.com/Jeffallan/claude-skills/tree/main/skills/spring-boot-engineer
-#   ./install-skill.sh https://github.com/Jeffallan/claude-skills/tree/main/skills/spring-boot-engineer .claude/skills
+#   ./install-skill.sh https://github.com/Jeffallan/claude-skills/tree/main/skills/spring-boot-engineer skills
 #   ./install-skill.sh Jeffallan/claude-skills/skills/spring-boot-engineer#main   # atalho estilo degit
 #
-# Por padrão instala em .claude/skills/<nome-da-skill>.
+# Por padrão instala em skills/<nome-da-skill>.
 # Requer: bash, npx (Node.js).
 
 set -euo pipefail
@@ -35,7 +35,7 @@ Uso:
 Argumentos:
   <url-github>   URL da pasta (ex.: https://github.com/owner/repo/tree/main/path/to/skill)
                  ou atalho degit (owner/repo/path#ref)
-  [destino]      Pasta-pai onde instalar (padrão: .claude/skills)
+  [destino]      Pasta-pai onde instalar (padrão: skills)
   --force        Sobrescreve se o destino já existir
 
 Exemplos:
@@ -46,7 +46,7 @@ EOF
 
 # ---- parse args -------------------------------------------------------------
 SRC=""
-DEST_PARENT=".claude/skills"
+DEST_PARENT="skills"
 FORCE=0
 
 for arg in "$@"; do
@@ -88,11 +88,37 @@ if [[ "$SRC" == http*://* || "$SRC" == github.com/* ]]; then
   DEGIT_SRC="${OWNER}/${REPO}/${SUBPATH}#${REF}"
   SKILL_NAME="$(basename "$SUBPATH")"
 else
-  # atalho degit direto
+  # atalho degit direto: OWNER/REPO/PATH#REF
   DEGIT_SRC="$SRC"
   base="${SRC%%#*}"
+  [[ "$SRC" == *#* ]] && REF="${SRC##*#}"
+  IFS='/' read -r OWNER REPO _REST <<< "$base"
+  SUBPATH="$_REST"
+  [[ -n "${OWNER:-}" && -n "${REPO:-}" && -n "${SUBPATH:-}" ]] \
+    || die "Atalho inválido. Use OWNER/REPO/PATH#REF (ex.: angular/angular/skills/dev-skills/angular-developer#main)"
   SKILL_NAME="$(basename "$base")"
 fi
+
+# ---- fallback: baixa só a subpasta via git sparse-checkout ------------------
+# Usado quando o degit falha (ex.: monorepos gigantes como angular/angular, onde
+# o `git ls-remote` retorna ~45k refs e estoura o maxBuffer interno do degit).
+sparse_fetch() {
+  command -v git >/dev/null 2>&1 || die "git não encontrado para o fallback de sparse-checkout."
+  local tmp; tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  echo "${DIM}  (sparse-checkout: $OWNER/$REPO@$REF → $SUBPATH)${RESET}"
+  git clone --filter=blob:none --no-checkout --depth 1 --branch "$REF" \
+      "https://github.com/${OWNER}/${REPO}.git" "$tmp/repo" >/dev/null 2>&1 \
+    || die "git clone falhou. Verifique owner/repo/ref e se o repo é público."
+  ( cd "$tmp/repo" \
+      && git sparse-checkout set --no-cone "$SUBPATH" >/dev/null 2>&1 \
+      && git checkout >/dev/null 2>&1 ) \
+    || die "sparse-checkout falhou para '$SUBPATH'."
+  [[ -d "$tmp/repo/$SUBPATH" ]] || die "Pasta '$SUBPATH' não encontrada no repo após checkout."
+  rm -rf "$DEST"
+  mkdir -p "$(dirname "$DEST")"
+  mv "$tmp/repo/$SUBPATH" "$DEST"
+}
 
 DEST="${DEST_PARENT%/}/${SKILL_NAME}"
 
@@ -115,8 +141,10 @@ mkdir -p "$DEST_PARENT"
 echo "${BOLD}↓ Baixando skill...${RESET}"
 DEGIT_FLAGS=()
 [[ "$FORCE" -eq 1 ]] && DEGIT_FLAGS+=(--force)
-npx --yes degit ${DEGIT_FLAGS[@]+"${DEGIT_FLAGS[@]}"} "$DEGIT_SRC" "$DEST" \
-  || die "Falha no degit. Verifique se a URL/pasta existe e o repo é público."
+if ! npx --yes degit ${DEGIT_FLAGS[@]+"${DEGIT_FLAGS[@]}"} "$DEGIT_SRC" "$DEST" 2>/dev/null; then
+  echo "${YELLOW}! degit falhou (repo grande demais?) — tentando via git sparse-checkout...${RESET}"
+  sparse_fetch
+fi
 
 # ---- valida que parece uma skill -------------------------------------------
 if [[ -f "$DEST/SKILL.md" ]]; then
