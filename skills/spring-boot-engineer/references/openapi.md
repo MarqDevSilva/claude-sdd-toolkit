@@ -133,19 +133,16 @@ Reference it on error responses (or globally via a `@ControllerAdvice`-level `@A
 
 - Version the API in the **path** (`/api/v1/...`), already the project convention.
 - Set the spec `version` from `APP_VERSION` so each build stamps the contract.
-- Commit the generated spec or the frontend client so contract diffs show up in PR review.
+- Commit the spec (or keep it exported) so contract diffs show up in PR review.
 
 ## Handoff to the frontend
 
-Once `/v3/api-docs` is live (or exported to a file), the **`api-contract-sync`** skill regenerates
-the Angular client and reports drift / breaking changes. Typical command (owned by that skill):
-
-```bash
-npx @openapitools/openapi-generator-cli generate \
-  -i http://localhost:8080/v3/api-docs \
-  -g typescript-angular \
-  -o src/app/api/generated
-```
+Once `/v3/api-docs` is live (or exported to a file), the **`api-contract-sync`** skill reads the spec
+and **builds/syncs the Angular domains** — for each tag a `model.ts` (interfaces 1:1 with the
+schemas), plus a scaffolded `state.ts` + `service.ts` (over `HttpClient`) + `service.spec.ts`,
+following the `angular-engineer` pattern. There is **no generated client**: the agent maps
+tags→domains, schemas→interfaces, operations→service methods, and reports drift / breaking changes.
+Keep the `ProblemDetails` error contract stable — the frontend mirrors it in `libs/shared/util`.
 
 ## Checklist when adding an endpoint
 
@@ -153,4 +150,4 @@ npx @openapitools/openapi-generator-cli generate \
 - [ ] Non-2xx outcomes documented with `@ApiResponse` + the `ApiError` schema
 - [ ] DTO fields have `@Schema(example = ...)` where the contract isn't obvious
 - [ ] New `ErrorCode` values are reachable so the frontend can mirror them
-- [ ] Spec regenerated and frontend client synced via `api-contract-sync`
+- [ ] Spec regenerated and frontend domains synced via `api-contract-sync`

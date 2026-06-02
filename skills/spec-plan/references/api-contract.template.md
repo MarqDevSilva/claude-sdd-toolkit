@@ -91,6 +91,6 @@ Formato do payload de erro: [RFC 7807 `ProblemDetail`](https://www.rfc-editor.or
 ## Checklist de sincronização
 
 - [ ] OpenAPI gerado pelo Spring atualizado
-- [ ] Cliente TS regenerado (openapi-generator)
-- [ ] Tipos do front consumidos a partir do client gerado, **não** redeclarados
-- [ ] Testes de contrato (se aplicável) atualizados
+- [ ] Domains do front sincronizados via `api-contract-sync` (`*.model.ts` regerados; `service`/`state` scaffolded ou drift reportado)
+- [ ] Interfaces do front geradas a partir dos schemas do OpenAPI, **não** redeclaradas à mão
+- [ ] Testes de service (`HttpTestingController`) atualizados

@@ -15,13 +15,14 @@ Inspirado no [GitHub Spec Kit](https://github.com/github/spec-kit), adaptado pra
 │   ├── memory/             # (gerado por project-onboard) architecture.md + conventions.md
 │   └── templates/          # Vazio — espaço pra templates próprios do projeto, se quiser
 ├── skills/                 # Skills do Claude Code (cada uma autocontida)
+│   ├── spec-init/          # SKILL.md + scripts/init-spec.sh — scaffolda .spec/ (passo ZERO)
 │   ├── app-kickoff/        # SKILL.md + references/ (brief, modules, entities, roadmap) — projeto NOVO
 │   ├── project-onboard/    # SKILL.md + references/ (architecture, conventions) — projeto EXISTENTE
 │   ├── spec-new/           # SKILL.md + references/spec.template.md
 │   ├── spec-plan/          # SKILL.md + references/ (plan, api-contract)
 │   ├── spec-tasks/         # SKILL.md + references/tasks.template.md
 │   ├── spec-review/        # SKILL.md + references/review-checklist.md
-│   ├── angular-engineer/   # SKILL.md + references/ (components, state, api-client, testing, lint)
+│   ├── angular-engineer/   # SKILL.md + references/ (components, state, http-services, testing, lint)
 │   ├── spring-boot-engineer/ # SKILL.md + references/ (web, data, security, error-handling, ...)
 │   └── api-contract-sync/  # SKILL.md
 ├── install-skill.sh        # Importa uma skill de outro repo público (via npx degit)
@@ -116,6 +117,8 @@ O script faz parse da URL, baixa apenas a subpasta, valida se tem `SKILL.md` e l
 ## Fluxo SDD resumido
 
 ```
+0.  spec-init        → cria a estrutura .spec/ (só se o projeto ainda não tiver)
+       ↓
 0a. app-kickoff      → (projeto NOVO) .spec/discovery/brief.md
                      + module_<nome>.md (um por módulo) + entities.md + roadmap.md
 0b. project-onboard  → (projeto EXISTENTE) .spec/memory/architecture.md + conventions.md
@@ -136,6 +139,7 @@ O script faz parse da URL, baixa apenas a subpasta, valida se tem `SKILL.md` e l
 
 | Skill | Função |
 |-------|--------|
+| `spec-init` | **Passo zero** — scaffolda a pasta `.spec/` completa (discovery/changes/archive/memory/templates) num projeto que ainda não a tem. Idempotente |
 | `app-kickoff` | **Projeto novo** — kickoff em 4 fases: brief → módulos (RFs/RNFs/regras/fluxos) → entidades (conceitual + técnica) → roadmap |
 | `project-onboard` | **Projeto existente** — engenharia reversa leve: detecta stack, mapeia arquitetura e grava `.spec/memory/` |
 | `spec-new` | Cria spec nova, guiada por perguntas |
@@ -147,9 +151,9 @@ O script faz parse da URL, baixa apenas a subpasta, valida se tem `SKILL.md` e l
 
 | Skill | Função |
 |-------|--------|
-| `angular-engineer` | Apps Angular 18+ em monorepo: domínios, signal state + facades, client OpenAPI gerado, ESLint/Prettier + testes |
+| `angular-engineer` | Apps Angular 18+ em monorepo: domínios, signal state + services inteligentes sobre `HttpClient`, `ProblemDetails`, ESLint/Prettier + testes |
 | `spring-boot-engineer` | Apps Spring Boot 3.x monolito por bounded context: REST em camadas, Spring Security 6, Spring Data JPA, error handling, observabilidade |
-| `api-contract-sync` | Sincroniza o contrato API entre Spring (springdoc OpenAPI) e Angular (client TS), detectando divergências back ↔ front |
+| `api-contract-sync` | Lê o OpenAPI do Spring e constrói/sincroniza os domains do Angular (model + state + service + spec), detectando divergências back ↔ front |
 
 ### Mobile / KMP
 

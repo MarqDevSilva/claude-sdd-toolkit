@@ -5,14 +5,14 @@
 
 ## The four buckets
 
-| Bucket | Location | Smart? | Talks to state/facade? |
+| Bucket | Location | Smart? | Talks to state/service? |
 |--------|----------|--------|------------------------|
-| **Pages** | `apps/*/pages/<area>/` | Smart | Yes — read `state`, call `facade` |
+| **Pages** | `apps/*/pages/<area>/` | Smart | Yes — read `state`, call `service` |
 | **Layouts** | `apps/*/layouts/` | Mostly dumb | Shell only (header/sidebar/router-outlet) |
 | **App components** | `apps/*/components/` | Smart | Yes — app-specific |
 | **Shared UI** | `libs/shared/ui/` | Dumb | No — only `input()/output()` |
 
-Rule of thumb: **if it injects a `state`/`facade`, it is smart and lives in the app**
+Rule of thumb: **if it injects a `state`/`service`, it is smart and lives in the app**
 (`pages` or `components`). If it only has inputs/outputs, it is dumb and **reusable** → `libs/shared/ui`.
 
 ## Pages — area-based, may mix domains
@@ -20,7 +20,7 @@ Rule of thumb: **if it injects a `state`/`facade`, it is smart and lives in the 
 ```typescript
 // apps/admin/src/app/pages/orders/orders.page.ts
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { OrderState, OrderFacade } from '@org/domains/order';
+import { OrderState, OrderService } from '@org/domains/order';
 import { CustomerState } from '@org/domains/customer';   // same page, two domains
 import { OrderTableComponent } from '@org/shared/ui';
 
@@ -30,19 +30,19 @@ import { OrderTableComponent } from '@org/shared/ui';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [OrderTableComponent],
   template: `
-    <h1>Orders for {{ customers.count() }} customers</h1>
+    <h1>Orders for {{ customers.itens().length }} customers</h1>
     <app-order-table
-      [orders]="orders.items()"
-      [loading]="orders.loading()"
-      (rowClick)="orders.select($event)" />
+      [orders]="orders.itens()"
+      [loading]="orders.carregando()"
+      (rowClick)="orders.selecionado.set($event)" />
   `,
 })
 export class OrdersPage {
   protected readonly orders = inject(OrderState);
   protected readonly customers = inject(CustomerState);
-  private readonly orderFacade = inject(OrderFacade);
+  private readonly orderService = inject(OrderService);
 
-  constructor() { this.orderFacade.load(); }
+  constructor() { this.orderService.listar().subscribe(); }
 }
 ```
 
@@ -51,7 +51,7 @@ export class OrdersPage {
 ```typescript
 // libs/shared/ui/order-table/order-table.component.ts
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
-import { OrderVm } from '@org/domains/order';
+import { Order } from '@org/domains/order';
 
 @Component({
   selector: 'app-order-table',
@@ -60,20 +60,20 @@ import { OrderVm } from '@org/domains/order';
   template: `
     @if (loading()) { <p>Loading…</p> }
     @for (o of orders(); track o.id) {
-      <button type="button" (click)="rowClick.emit(o.id)">{{ o.code }}</button>
+      <button type="button" (click)="rowClick.emit(o)">{{ o.code }}</button>
     } @empty {
       <p>No orders.</p>
     }
   `,
 })
 export class OrderTableComponent {
-  readonly orders = input.required<OrderVm[]>();
+  readonly orders = input.required<Order[]>();
   readonly loading = input(false);
-  readonly rowClick = output<number>();
+  readonly rowClick = output<Order>();
 }
 ```
 
-> Dumb components never inject `state`/`facade` and never call HTTP. They receive data via `input()`
+> Dumb components never inject `state`/`service` and never call HTTP. They receive data via `input()`
 > and report events via `output()`. That is what makes them reusable across apps.
 
 ## Layouts — the shell
@@ -122,13 +122,15 @@ import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { routes } from './app.routes';
-import { errorInterceptor, traceIdInterceptor } from '@org/core';
+import { API_BASE_URL, errorInterceptor, traceIdInterceptor } from '@org/core';
+import { environment } from '../environments/environment';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
     provideHttpClient(withInterceptors([traceIdInterceptor, errorInterceptor])),
+    { provide: API_BASE_URL, useValue: environment.apiUrl },   // domains read this token
   ],
 };
 ```

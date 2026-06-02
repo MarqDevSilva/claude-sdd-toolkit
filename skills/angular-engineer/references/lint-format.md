@@ -98,7 +98,7 @@ ng lint                  # all projects in angular.json
 
 Native CLI has no automatic module-boundary rule. Keep boundaries by convention + review:
 - `shared`/`core` never import `domains` or `apps`.
-- `domains` never import `apps`.
-- Only facades import `@org/api-client`.
+- `domains` never import `apps` (read the base URL via the `API_BASE_URL` token, not an app's `environment`).
+- Only domain `service`s inject `HttpClient`; components, pages and `state` never do.
 
 If boundary drift becomes a real problem, `eslint-plugin-boundaries` can encode these as lint rules.

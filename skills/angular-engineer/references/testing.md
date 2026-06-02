@@ -7,114 +7,137 @@
 
 | Target | How |
 |--------|-----|
-| `state` (signal store) | Pure unit — call methods, assert signal values |
-| `facade` | Mock `api-client` with `of(...)`, assert it updates the injected `state` |
+| `state` (signals container) | Pure unit — set signals, assert values (rarely needs its own spec) |
+| `service` | `HttpTestingController` — call the method, flush the response, assert it updated `state` |
 | Dumb component | `TestBed` + `componentRef.setInput()`, assert rendered DOM |
-| Smart page/component | `TestBed` with a fake `state`/`facade` provided |
+| Smart page/component | `TestBed` with a fake `state`/`service` provided |
 
-## State (signal store) — pure unit
+The **service** is where the logic lives, so it carries the bulk of the coverage. `api-contract-sync`
+scaffolds a `*.service.spec.ts` per domain with this shape.
 
-```typescript
-import { ProductState } from './product.state';
+## Service — `HttpTestingController`
 
-describe('ProductState', () => {
-  let state: ProductState;
-  beforeEach(() => { state = new ProductState(); });
-
-  it('exposes items and count after setItems', () => {
-    state.setItems([{ id: 1, name: 'Mouse', price: 79.9 }]);
-    expect(state.items().length).toBe(1);
-    expect(state.count()).toBe(1);
-  });
-
-  it('upsert replaces an existing item', () => {
-    state.setItems([{ id: 1, name: 'Mouse', price: 79.9 }]);
-    state.upsert({ id: 1, name: 'Mouse Pro', price: 99 });
-    expect(state.items()[0].name).toBe('Mouse Pro');
-    expect(state.count()).toBe(1);
-  });
-});
-```
-
-## Facade — mock the generated client
+Provide the real `HttpClient` testing backend and the `API_BASE_URL` token; assert both the request
+(method/URL/body) and the resulting state.
 
 ```typescript
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
-import { ProductsApi } from '@org/api-client';
-import { ProductFacade } from './product.facade';
+import { API_BASE_URL } from '@org/core';
+import { ProblemDetails } from '@org/shared/util';
+import { ProductService } from './product.service';
 import { ProductState } from './product.state';
 
-describe('ProductFacade', () => {
-  let facade: ProductFacade;
+const BASE = 'http://localhost:8080/products';
+
+describe('ProductService', () => {
+  let service: ProductService;
   let state: ProductState;
-  const api = { search: jasmine.createSpy('search') };
+  let http: HttpTestingController;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        ProductFacade,
-        ProductState,
-        { provide: ProductsApi, useValue: api },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_BASE_URL, useValue: 'http://localhost:8080' },
       ],
     });
-    facade = TestBed.inject(ProductFacade);
+    service = TestBed.inject(ProductService);
     state = TestBed.inject(ProductState);
+    http = TestBed.inject(HttpTestingController);
   });
 
-  it('load() maps DTOs into state and clears loading', () => {
-    api.search.and.returnValue(of([{ id: 1, name: 'Mouse', price: 79.9 }]));
+  afterEach(() => http.verify());
 
-    facade.load();
+  it('listar() GETs /products and feeds the itens signal', () => {
+    const itens = [{ id: '1', nome: 'Mouse', preco: 79.9 }];
 
-    expect(state.items()).toEqual([{ id: 1, name: 'Mouse', price: 79.9 }]);
-    expect(state.loading()).toBeFalse();
+    service.listar().subscribe();
+    const req = http.expectOne(BASE);
+    expect(req.request.method).toBe('GET');
+    req.flush(itens);
+
+    expect(state.itens()).toEqual(itens);
+    expect(state.carregando()).toBeFalse();
+    expect(state.erro()).toBeNull();
   });
+
+  it('marks carregando during the request', () => {
+    service.listar().subscribe();
+    expect(state.carregando()).toBeTrue();
+    http.expectOne(BASE).flush([]);
+    expect(state.carregando()).toBeFalse();
+  });
+
+  it('maps an HTTP error to ProblemDetails in the erro signal', () => {
+    let capturado: ProblemDetails | undefined;
+    service.listar().subscribe({ error: (e: ProblemDetails) => (capturado = e) });
+
+    http.expectOne(BASE).flush(
+      { type: 'about:blank', title: 'Erro interno', status: 500, detail: 'Boom' },
+      { status: 500, statusText: 'Internal Server Error' },
+    );
+
+    expect(capturado?.status).toBe(500);
+    expect(state.erro()?.status).toBe(500);
+    expect(state.carregando()).toBeFalse();
+  });
+});
+```
+
+## State — pure unit (only when it has computed logic)
+
+A bare signals container needs no spec. Add one only when the state has `computed` worth asserting:
+
+```typescript
+import { ProductState } from './product.state';
+
+it('itens signal holds what was set', () => {
+  const state = new ProductState();
+  state.itens.set([{ id: '1', nome: 'Mouse', preco: 79.9 }]);
+  expect(state.itens().length).toBe(1);
 });
 ```
 
 ## Dumb component — set inputs, assert DOM
 
 ```typescript
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { ProductListComponent } from './product-list.component';
 
-describe('ProductListComponent', () => {
-  let fixture: ComponentFixture<ProductListComponent>;
+it('renders one row per item', () => {
+  TestBed.configureTestingModule({ imports: [ProductListComponent] });
+  const fixture = TestBed.createComponent(ProductListComponent);
+  fixture.componentRef.setInput('items', [
+    { id: '1', nome: 'Mouse', preco: 79.9 },
+    { id: '2', nome: 'Keyboard', preco: 199 },
+  ]);
+  fixture.detectChanges();
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({ imports: [ProductListComponent] });
-    fixture = TestBed.createComponent(ProductListComponent);
-  });
-
-  it('renders one row per item', () => {
-    fixture.componentRef.setInput('items', [
-      { id: 1, name: 'Mouse', price: 79.9 },
-      { id: 2, name: 'Keyboard', price: 199 },
-    ]);
-    fixture.detectChanges();
-
-    const rows = fixture.nativeElement.querySelectorAll('div');
-    expect(rows.length).toBe(2);
-  });
+  expect(fixture.nativeElement.querySelectorAll('div').length).toBe(2);
 });
 ```
 
-## Smart page — fake state + facade
+## Smart page — fake state + service
+
+Faking signals is trivial: a fake `state` is just an object whose fields are `signal(...)`, and the
+`service` is a spy whose methods return `of(...)`.
 
 ```typescript
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { ProductState, ProductFacade } from '@org/domains/product';
+import { of } from 'rxjs';
+import { ProductState, ProductService } from '@org/domains/product';
 import { DashboardPage } from './dashboard.page';
 
 describe('DashboardPage', () => {
-  let fixture: ComponentFixture<DashboardPage>;
-  const facade = { load: jasmine.createSpy('load') };
+  const service = { listar: jasmine.createSpy('listar').and.returnValue(of([])) };
   const fakeState = {
-    items: signal([{ id: 1, name: 'Mouse', price: 79.9 }]),
-    loading: signal(false),
-    count: signal(1),
+    itens: signal([{ id: '1', nome: 'Mouse', preco: 79.9 }]),
+    carregando: signal(false),
+    erro: signal(null),
   };
 
   beforeEach(() => {
@@ -122,21 +145,17 @@ describe('DashboardPage', () => {
       imports: [DashboardPage],
       providers: [
         { provide: ProductState, useValue: fakeState },
-        { provide: ProductFacade, useValue: facade },
+        { provide: ProductService, useValue: service },
       ],
     });
-    fixture = TestBed.createComponent(DashboardPage);
-    fixture.detectChanges();
+    TestBed.createComponent(DashboardPage).detectChanges();
   });
 
   it('loads on init', () => {
-    expect(facade.load).toHaveBeenCalled();
+    expect(service.listar).toHaveBeenCalled();
   });
 });
 ```
-
-> Faking signals is trivial: a fake `state` is just an object whose fields are `signal(...)`. The
-> component reads them the same way (`state.items()`), so the test needs no real store.
 
 ## Running
 
@@ -148,7 +167,7 @@ ng test --watch=false   # single run (CI)
 
 ## Conventions
 
-- One `.spec.ts` next to the unit under test.
-- Test behavior, not implementation: assert rendered output / resulting signal values, not internals.
-- Mock the `api-client` and the `facade` at the boundary; never hit a real network in unit tests.
-- Keep `state` tests dependency-free (plain `new State()`), no `TestBed` needed.
+- One `.spec.ts` next to the unit under test (`*.service.spec.ts` is the main one per domain).
+- Test behavior, not implementation: assert the request made and the resulting signal values.
+- Use `HttpTestingController` for services; never hit a real network. `http.verify()` in `afterEach`.
+- Fake the `service` (spy returning `of(...)`) and the `state` (object of `signal(...)`) for pages.

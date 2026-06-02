@@ -1,87 +1,142 @@
-# API Client — Consuming the Generated OpenAPI Client
+# HTTP & Services — HttpClient, API_BASE_URL, ProblemDetails
 
-> The typed client is **generated** from the backend OpenAPI spec and lives in `libs/api-client`.
-> It is **never edited by hand** — regenerate it via the **`api-contract-sync`** skill. The backend
-> produces the spec via springdoc (see `spring-boot-engineer/references/openapi.md`).
+> There is **no generated API client**. Each domain owns a smart `service` that injects `HttpClient`
+> and talks to the backend directly. Models are interfaces 1:1 with the OpenAPI schemas, regenerated
+> by the **`api-contract-sync`** skill (which reads the springdoc spec and scaffolds the domain).
 
-## Where it lives
+## Who may import HttpClient
 
-```
-libs/api-client/            # generated typescript-angular client (a normal lib)
-├── src/
-│   ├── api/                # one service per backend @Tag (e.g. ProductsApi)
-│   ├── model/              # one interface per schema (ProductRequest, ProductResponse, ...)
-│   ├── configuration.ts
-│   └── index.ts            # public-api → exported as @org/api-client
-```
-
-Generation is owned by `api-contract-sync`, e.g.:
-
-```bash
-npx @openapitools/openapi-generator-cli generate \
-  -i http://localhost:8080/v3/api-docs \
-  -g typescript-angular \
-  -o libs/api-client/src
-```
-
-Commit the generated output so contract diffs surface in PR review. Never put business logic here.
-
-## Who may import it
-
-**Only domain facades** import `@org/api-client`. Components, pages, and `state` must not.
+**Only domain services** inject `HttpClient`. Components, pages, and `state` must not.
 
 ```
-component / page  →  facade  →  @org/api-client
-                       │
-                     state  (no api-client import)
+component / page  →  service  →  HttpClient → backend
+                        │
+                      state  (signals only, no HttpClient)
 ```
 
-## Configure the base path
+## Base URL — the `API_BASE_URL` token (monorepo)
+
+A domain lives in `libs/domains` and must **not** import an app's `environment` (that would make a
+lib depend on an app). Instead, `libs/core` exposes an injection token; each app provides it from its
+own `environment`.
+
+```typescript
+// libs/core/tokens/api-base-url.token.ts
+import { InjectionToken } from '@angular/core';
+export const API_BASE_URL = new InjectionToken<string>('API_BASE_URL');
+```
 
 ```typescript
 // apps/admin/src/app/app.config.ts
-import { BASE_PATH } from '@org/api-client';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { API_BASE_URL, errorInterceptor, traceIdInterceptor } from '@org/core';
 import { environment } from '../environments/environment';
 
-providers: [
-  // ...
-  { provide: BASE_PATH, useValue: environment.apiUrl },
-];
+export const appConfig: ApplicationConfig = {
+  providers: [
+    { provide: API_BASE_URL, useValue: environment.apiUrl },
+    provideHttpClient(withInterceptors([traceIdInterceptor, errorInterceptor])),
+    // ...
+  ],
+};
 ```
 
-## Transform in the facade, not in the generated client
+```typescript
+// libs/domains/product/product.service.ts
+private readonly baseUrl = `${inject(API_BASE_URL)}/products`;
+```
 
-The generated service returns raw `Observable<Dto>`. Map to a ViewModel and handle failures in the
-facade — never edit the generated file.
+> The OpenAPI server URL and the per-environment `apiUrl` are owned by `api-contract-sync`, which
+> ensures `environment.ts` (dev), `environment.hom.ts`, and `environment.prod.ts` each carry the
+> right `apiUrl` and that `API_BASE_URL` is wired in `app.config.ts`.
+
+## Transform & error in the service, never in the component
+
+The service returns `Observable<Dto>`, mutates state via `tap`, and funnels failures through a
+single `handleError`. Models are used as-is (no mapper) — the response type **is** the model.
 
 ```typescript
-load(name = ''): void {
-  this.state.setLoading(true);
-  this.api.search(name).pipe(
-    map(list => list.map(toProductVm)),                 // DTO → VM (models.ts)
-    catchError(() => { this.state.setError('Failed'); return of([]); }),
-    finalize(() => this.state.setLoading(false)),
-  ).subscribe(items => this.state.setItems(items));
+listar(): Observable<Product[]> {
+  this.iniciarCarregamento();
+  return this.http.get<Product[]>(this.baseUrl).pipe(
+    tap((itens) => { this.state.itens.set(itens); this.state.carregando.set(false); }),
+    catchError((err: HttpErrorResponse) => this.handleError(err)),
+  );
+}
+
+private handleError(err: HttpErrorResponse): Observable<never> {
+  const problem = toProblemDetails(err);
+  this.state.erro.set(problem);
+  this.state.carregando.set(false);
+  return throwError(() => problem);
+}
+```
+
+## ProblemDetails — RFC 7807 (libs/shared/util)
+
+The backend returns RFC 7807 problem responses. `libs/shared/util` carries the type and a converter
+that survives non-conforming error bodies. Keep this in sync with the Spring error contract.
+
+```typescript
+// libs/shared/util/problem-details.ts
+import { HttpErrorResponse } from '@angular/common/http';
+
+export interface ProblemDetails {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  instance?: string;
+  path?: string;
+  method?: string;
+  timestamp?: string;
+  erros?: Record<string, string>;   // field validation errors
+  errorId?: string;
+}
+
+export function toProblemDetails(err: HttpErrorResponse): ProblemDetails {
+  const body: unknown = err.error;
+  if (isProblemDetails(body)) return body;
+  return {
+    type: 'about:blank',
+    title: err.statusText || 'Erro',
+    status: err.status ?? 0,
+    detail: typeof body === 'string' ? body : err.message,
+  };
+}
+
+function isProblemDetails(value: unknown): value is ProblemDetails {
+  if (typeof value !== 'object' || value === null) return false;
+  const c = value as Record<string, unknown>;
+  return typeof c['title'] === 'string'
+    && typeof c['status'] === 'number'
+    && typeof c['detail'] === 'string';
 }
 ```
 
 ## Cross-cutting concerns → interceptors (libs/core)
 
-Write these once; they apply to every request, including the generated client.
+Write these once; they apply to every request.
 
 ```typescript
-// libs/core/interceptors/error.interceptor.ts
+// libs/core/interceptors/error.interceptor.ts — global handling (toast, 401 redirect)
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
+import { ToastService } from '../toast/toast.service';
+import { toProblemDetails } from '@org/shared/util';
 
-export const errorInterceptor: HttpInterceptorFn = (req, next) =>
-  next(req).pipe(
+export const errorInterceptor: HttpInterceptorFn = (req, next) => {
+  const toast = inject(ToastService);
+  return next(req).pipe(
     catchError((err: HttpErrorResponse) => {
-      const code = err.error?.code;          // stable contract from the backend ErrorCode
-      // route global handling by `code` (toast, redirect on 401, ...)
+      const problem = toProblemDetails(err);
+      if (problem.status >= 500) toast.error(problem.title, problem.detail);
+      // route 401 → login, etc.
       return throwError(() => err);
     }),
   );
+};
 ```
 
 ```typescript
@@ -98,17 +153,18 @@ export const traceIdInterceptor: HttpInterceptorFn = (req, next) => {
 ```
 
 > The backend reads `traceparent`/`X-Request-Id` into its logs (MDC), correlating front and back.
-> The `code` field is the contract the frontend branches on — not the human-readable `detail`.
+> Per-screen errors are handled by the service (`state.erro`); the interceptor handles only
+> cross-cutting concerns (global toast, auth redirect) so the two don't double-report.
 
-## Optional typed error codes
+## ToastService (libs/core)
 
-Mirror the backend `ErrorCode` enum as a TS union so global handling is type-checked. Keep the names
-in sync with the backend (they are part of the contract); generate or maintain alongside the client.
+A singleton signal-based toast service lives in `libs/core` and is consumed by interceptors and
+smart components for transient notifications (`success`/`error`/`info`/`warning`).
 
 ## Handoff
 
 | Concern | Owner |
 |---------|-------|
-| Produce the OpenAPI spec (springdoc, annotations) | `spring-boot-engineer/references/openapi.md` |
-| Regenerate the TS client, detect drift/breaking changes | `api-contract-sync` |
-| Consume it (facade, `.pipe`, interceptors) | this skill |
+| Produce the OpenAPI spec (springdoc, annotations, error contract) | `spring-boot-engineer/references/openapi.md` |
+| Read the spec, scaffold/sync domains (model + state + service + spec), wire environments | `api-contract-sync` |
+| Consume it (service, `.pipe`, state, interceptors) | this skill |
